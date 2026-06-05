@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>English Basics — AI tutor for Spanish speakers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <span class="brand-name">English Basics</span>
+      </div>
+      <button id="history-btn" class="ghost-btn">Past sessions</button>
+    </header>
+
+    <main id="app">
+      <!-- ============ SETUP ============ -->
+      <section id="view-setup" class="view active">
+        <div class="hero">
+          <p class="eyebrow">AI English tutor · for Spanish speakers</p>
+          <h1>Drill the English that Spanish trips you up on.</h1>
+          <p class="lede">
+            Pick a topic, get a sentence with a deliberate mistake, choose
+            the fix. Every fifth question is a free-write — the AI grades you
+            and explains in plain language.
+          </p>
+        </div>
+
+        <div class="setup-card">
+          <div class="field">
+            <label>Category</label>
+            <div id="category-grid" class="category-grid"></div>
+          </div>
+
+          <div class="field">
+            <label>Length</label>
+            <div class="chip-grid" id="count-grid">
+              <button class="chip active" data-count="5">5 questions</button>
+              <button class="chip" data-count="10">10 questions</button>
+            </div>
+          </div>
+
+          <button id="start-btn" class="primary-btn">Start practice →</button>
+        </div>
+      </section>
+
+      <!-- ============ PRACTICE ============ -->
+      <section id="view-practice" class="view">
+        <div class="practice-head">
+          <div class="meta">
+            <span id="pr-category" class="tag"></span>
+            <span id="pr-type" class="tag subtle"></span>
+          </div>
+          <div class="practice-right">
+            <div class="score-pill">
+              <span id="pr-score">0</span>
+              <span class="score-sep">/</span>
+              <span id="pr-total">0</span>
+              <span class="score-label">correct</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress">
+          <span id="pr-progress-text">Question 1 of 10</span>
+          <div class="progress-bar"><div id="pr-progress-fill"></div></div>
+        </div>
+
+        <!-- ============ MULTIPLE-CHOICE QUESTION ============ -->
+        <div id="mc-card" class="question-card">
+          <p class="q-label">Question <span id="q-num">1</span></p>
+          <p id="q-prompt" class="q-text"></p>
+          <div id="q-options" class="options-grid"></div>
+        </div>
+
+        <!-- ============ FREE-WRITE QUESTION ============ -->
+        <div id="free-card" class="question-card hidden">
+          <p class="q-label">Free write <span id="q-num-free">1</span></p>
+          <p id="q-prompt-free" class="q-text free-prompt"></p>
+          <textarea
+            id="free-input"
+            class="answer-box"
+            placeholder="Write your sentence in English here. Don't worry about mistakes — that's the whole point."
+          ></textarea>
+          <div class="free-actions">
+            <button id="free-submit" class="primary-btn">Check my sentence →</button>
+          </div>
+        </div>
+
+        <!-- ============ FEEDBACK (both modes) ============ -->
+        <div id="feedback-panel" class="feedback-panel hidden">
+          <div class="feedback-head">
+            <div id="feedback-icon" class="feedback-icon">–</div>
+            <p id="feedback-title" class="feedback-title">Result</p>
+          </div>
+
+          <div id="feedback-body" class="feedback-body"></div>
+
+          <div id="corrected-block" class="corrected-block hidden">
+            <span class="corrected-label">Polished</span>
+            <p id="corrected-text" class="corrected-text"></p>
+          </div>
+
+          <div id="model-block" class="corrected-block hidden">
+            <span class="corrected-label">Model answer</span>
+            <p id="model-text" class="corrected-text"></p>
+          </div>
+
+          <div id="praise-block" class="praise-block hidden">
+            <span class="praise-label">Nice work</span>
+            <p id="praise-text" class="praise-text"></p>
+          </div>
+
+          <button id="next-btn" class="primary-btn">Next question →</button>
+        </div>
+
+        <div id="pr-loading" class="loading hidden">
+          <span class="spinner"></span> Checking your sentence…
+        </div>
+      </section>
+
+      <!-- ============ REPORT ============ -->
+      <section id="view-report" class="view">
+        <div id="report-loading" class="loading big">
+          <span class="spinner"></span> Compiling your session report…
+        </div>
+
+        <div id="report-content" class="hidden">
+          <div class="report-head">
+            <p class="eyebrow">Session report</p>
+            <h2 id="rep-rating">–</h2>
+            <div class="report-meta">
+              <span id="rep-category" class="tag"></span>
+              <span id="rep-score" class="tag score"></span>
+            </div>
+          </div>
+
+          <p id="rep-summary" class="report-summary"></p>
+
+          <div class="report-cols">
+            <div class="report-block strengths">
+              <h3>Strengths</h3>
+              <ul id="rep-strengths"></ul>
+            </div>
+            <div class="report-block weaknesses">
+              <h3>Keep working on</h3>
+              <ul id="rep-weaknesses"></ul>
+            </div>
+            <div class="report-block improve">
+              <h3>Drill next</h3>
+              <ul id="rep-improve"></ul>
+            </div>
+          </div>
+
+          <h3 class="transcript-title">Your session</h3>
+          <div id="rep-transcript" class="transcript"></div>
+
+          <div class="report-actions">
+            <button id="save-btn" class="primary-btn">Save session</button>
+            <button id="restart-btn" class="ghost-btn">New practice</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ HISTORY ============ -->
+      <section id="view-history" class="view">
+        <div class="history-head">
+          <h2>Past sessions</h2>
+          <button id="back-from-history" class="ghost-btn">← Back</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

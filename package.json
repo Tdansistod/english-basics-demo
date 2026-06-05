@@ -1,0 +1,26 @@
+{
+  "name": "english-basics",
+  "version": "1.0.0",
+  "description": "AI-powered English grammar and vocabulary fundamentals practice for Spanish native speakers, using the MiniMax API (OpenAI-compatible).",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --env-file=.env server.js",
+    "dev": "node --env-file=.env server.js"
+  },
+  "keywords": [
+    "english",
+    "practice",
+    "spanish",
+    "tutor",
+    "minimax",
+    "openai-compatible",
+    "ai"
+  ],
+  "author": "Lautaro Waltersdorf",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "openai": "^6.42.0"
+  }
+}
