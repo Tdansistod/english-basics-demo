@@ -88,42 +88,74 @@ Notes:
 - polished should be a single natural English sentence (or a couple if the task asks for it).
 - praise should acknowledge something specific the learner did well, even when there are mistakes.`;
 
-const REPORT_FORMAT = `Respond with ONLY a single JSON object (no prose, no markdown fences) in exactly this shape:
+const REPORT_FORMAT = `You are an English-learning report generator. You will receive a transcript of a learner's practice session and must return a single, valid JSON object.
+
+OUTPUT RULES (strict):
+- Return ONLY a JSON object. No prose, no commentary, no greetings, no sign-off.
+- No markdown code fences (no \`\`\`json or \`\`\`). Just the raw JSON.
+- No thinking, no analysis, no explanation of what you are about to do. JSON only.
+- The first character of your response MUST be "{" and the last character MUST be "}".
+- Do not include any keys other than the ones specified below.
+- Make every string a plain, double-quoted JSON string. Escape inner quotes with \\".
+- strengths, weaknesses, and areas_to_improve must be arrays of strings (possibly empty, but use [] not null).
+
+Required shape:
 {
   "overall_rating": "<one of: Strong | Solid | Developing | Needs Work | Struggling>",
   "summary": "<3-5 sentence honest overall assessment in simple language>",
   "strengths": ["<concrete pattern the learner handled well>", "..."],
   "weaknesses": ["<concrete pattern the learner keeps getting wrong>", "..."],
   "areas_to_improve": ["<the single most impactful thing to drill next>", "..."]
-}`;
+}
+
+Reminder: your ENTIRE response must parse as JSON. Anything else is a failure.`;
 
 // --- Helpers ---------------------------------------------------------------
 
 // MiniMax-M3 is a reasoning model: it may prefix the answer with a
 // <think>...</think> block and/or wrap the JSON in ```json fences. This pulls
 // the first valid JSON object out of whatever the model returned.
+//
+// Returns { ok: true, value } on success, or { ok: false, reason, raw } on
+// failure. Callers can decide whether to throw, fall back, or surface an
+// error — we never throw out of here.
 function extractJson(raw) {
-  if (typeof raw !== "string") {
-    throw new Error("Model returned no text content.");
+  if (raw == null || typeof raw !== "string" || raw.trim() === "") {
+    return { ok: false, reason: "Model returned no text content.", raw: String(raw || "") };
   }
 
-  // Drop any reasoning block.
+  const debug = { raw };
+  const attempts = [];
+
+  // 1. Drop any <think>...</think> reasoning block(s). Models sometimes emit
+  //    multiple, and the closing tag may itself be inside a fenced code block
+  //    the model wrote — strip them all, greedily.
   let text = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
-  // Strip a single surrounding markdown code fence if present.
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fence) {
-    text = fence[1].trim();
+  // 2. If the response is wrapped in one or more ```json ... ``` fences,
+  //    try the contents of the FIRST fence first (most common shape).
+  const firstFence = text.match(/```(?:json|JSON)?\s*([\s\S]*?)\s*```/);
+  if (firstFence) {
+    const candidate = firstFence[1].trim();
+    attempts.push({ label: "fence-stripped", text: candidate });
+    try {
+      return { ok: true, value: JSON.parse(candidate) };
+    } catch (e) {
+      debug.fenceParseError = e.message;
+    }
   }
 
-  // Fast path: the whole thing is JSON.
+  // 3. Fast path: the whole (post-think) text is JSON.
+  attempts.push({ label: "whole", text });
   try {
-    return JSON.parse(text);
-  } catch {
-    // Fall through to brace-scanning.
+    return { ok: true, value: JSON.parse(text) };
+  } catch (e) {
+    debug.wholeParseError = e.message;
   }
 
-  // Slow path: find the first balanced {...} object in the text.
+  // 4. Slow path: scan for the first balanced {...} object, with proper
+  //    string + escape handling. This finds JSON even when the model wraps
+  //    it in prose like "Here is your report: { ... }".
   const start = text.indexOf("{");
   if (start !== -1) {
     let depth = 0;
@@ -142,13 +174,40 @@ function extractJson(raw) {
       } else if (ch === "}") {
         depth--;
         if (depth === 0) {
-          return JSON.parse(text.slice(start, i + 1));
+          const slice = text.slice(start, i + 1);
+          attempts.push({ label: "braced", text: slice });
+          try {
+            return { ok: true, value: JSON.parse(slice) };
+          } catch (e) {
+            debug.bracedParseError = e.message;
+            break;
+          }
         }
       }
     }
   }
 
-  throw new Error("Could not parse JSON from model response.");
+  // 5. Last-ditch: try every other ``` ... ``` fence in case there are many
+  //    and the first was a stray.
+  const allFences = [...text.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)\s*```/g)];
+  for (let i = 1; i < allFences.length; i++) {
+    const candidate = allFences[i][1].trim();
+    if (!candidate) continue;
+    attempts.push({ label: `fence#${i}`, text: candidate });
+    try {
+      return { ok: true, value: JSON.parse(candidate) };
+    } catch {
+      // keep trying
+    }
+  }
+
+  debug.attempts = attempts;
+  return {
+    ok: false,
+    reason: "Could not parse JSON from model response.",
+    raw,
+    debug,
+  };
 }
 
 function messageContent(completion) {
@@ -361,7 +420,22 @@ Identify any mistakes in the learner's sentence, explain them in plain language 
       ],
     });
 
-    const parsed = extractJson(messageContent(completion));
+    const extractResult = extractJson(messageContent(completion));
+    if (!extractResult.ok) {
+      console.error(
+        "[check-free] failed to parse model JSON:",
+        extractResult.reason,
+        "\n--- raw model response ---\n" +
+          (extractResult.raw || "").slice(0, 2000) +
+          "\n--- end raw ---",
+      );
+      return res.status(502).json({
+        error:
+          "Free-write check returned an unreadable response. " +
+          "Please try again, or check the server logs.",
+      });
+    }
+    const parsed = extractResult.value;
 
     // Normalize shape. mistakes may be absent or empty; polished may be a
     // string; praise may be a string.
@@ -431,7 +505,7 @@ ${transcript}
 
 Write a short, encouraging but honest report. Identify concrete patterns the learner is getting right, specific patterns they keep missing, and the single most impactful thing they should drill next. Keep the summary to 3-5 sentences. Avoid jargon — write for a learner, not a linguist.
 
-${REPORT_FORMAT}`;
+FINAL REMINDER: respond with a single valid JSON object only. No prose, no markdown fences, no thinking. First character must be "{" and last must be "}".`;
 
   try {
     const completion = await client.chat.completions.create({
@@ -439,11 +513,68 @@ ${REPORT_FORMAT}`;
       max_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
+        { role: "system", content: REPORT_FORMAT },
         { role: "user", content: userPrompt },
       ],
     });
 
-    const report = extractJson(messageContent(completion));
+    const reportResult = extractJson(messageContent(completion));
+
+    let report;
+    let reportWarning = null;
+    const looksLikeReport = (val) =>
+      val &&
+      typeof val === "object" &&
+      typeof val.overall_rating === "string" &&
+      typeof val.summary === "string" &&
+      Array.isArray(val.strengths) &&
+      Array.isArray(val.weaknesses) &&
+      Array.isArray(val.areas_to_improve);
+
+    if (reportResult.ok && looksLikeReport(reportResult.value)) {
+      report = reportResult.value;
+    } else {
+      // Model didn't return parseable / well-shaped JSON. Don't crash — log
+      // it, build a sensible default report from the numeric data we
+      // already have, and surface a warning to the client so the UI can
+      // show it.
+      const reason = reportResult.ok
+        ? "Model JSON did not match the report shape."
+        : reportResult.reason;
+      console.error(
+        "[report] " + reason,
+        "\n--- raw model response ---\n" +
+          (reportResult.raw || "").slice(0, 2000) +
+          "\n--- end raw ---",
+      );
+      reportWarning =
+        "The AI report could not be parsed this time. A basic summary " +
+        "based on your scores is shown instead.";
+      const avgNum = Number(avg);
+      const overall_rating =
+        avgNum >= 4.5
+          ? "Strong"
+          : avgNum >= 3.5
+          ? "Solid"
+          : avgNum >= 2.5
+          ? "Developing"
+          : avgNum >= 1.5
+          ? "Needs Work"
+          : "Struggling";
+      report = {
+        overall_rating,
+        summary:
+          `You completed ${items.length} ${items.length === 1 ? "question" : "questions"} ` +
+          `with an average score of ${avg} out of 5. ` +
+          `A detailed written report is unavailable right now, but the AI tutor ` +
+          `feedback on each individual answer is still saved with your session.`,
+        strengths: [],
+        weaknesses: [],
+        areas_to_improve: [
+          "Review the per-question AI feedback saved with this session for specific patterns to drill.",
+        ],
+      };
+    }
 
     const record = {
       sessionId: sessionId || Date.now().toString(36),
@@ -453,6 +584,7 @@ ${REPORT_FORMAT}`;
       questionCount: items.length,
       items,
       report,
+      ...(reportWarning ? { warning: reportWarning } : {}),
     };
 
     // Persist the session as JSON.
@@ -566,6 +698,9 @@ app.get("/api/sessions/:id", (req, res) => {
 app.listen(PORT, () => {
   console.log(
     `\n[english-basics] running at http://localhost:${PORT}\n` +
-      `  model report: ${MODEL} / model check: ${FAST_MODEL}\n  base:  ${BASE_URL}\n  sessions: ${SESSIONS_DIR}\n`,
+      `  model report: ${MODEL}  (env OPENAI_MODEL=${process.env.OPENAI_MODEL || "<unset, using default>"}; MINIMAX_MODEL=${process.env.MINIMAX_MODEL || "<unset>"})\n` +
+      `  model check:  ${FAST_MODEL}  (env OPENAI_FAST_MODEL=${process.env.OPENAI_FAST_MODEL || "<unset, using default>"})\n` +
+      `  base:         ${BASE_URL}  (env OPENAI_BASE_URL=${process.env.OPENAI_BASE_URL || "<unset, using default>"})\n` +
+      `  sessions:     ${SESSIONS_DIR}\n`,
   );
 });

@@ -17,7 +17,7 @@ The app targets the patterns that most often trip Spanish speakers up in English
 
 ## Stack
 
-- **Backend** — Node.js, Express, the `openai` SDK pointed at the MiniMax API (OpenAI-compatible).
+- **Backend** — Node.js, Express, the official `openai` SDK pointed at any OpenAI-compatible endpoint (MiniMax, OpenAI, Groq, etc.).
 - **Frontend** — vanilla JS, no build step. Static files served from `public/`.
 - **Storage** — local JSON files under `sessions/`.
 
@@ -28,7 +28,7 @@ git clone <repo-url> english-basics
 cd english-basics
 npm install
 cp .env.example .env
-# open .env and paste your MINIMAX_API_KEY
+# open .env and paste your OPENAI_API_KEY (any OpenAI-compatible provider: MiniMax, OpenAI, Groq, etc.)
 npm run dev
 ```
 
@@ -38,7 +38,7 @@ The app starts on `http://localhost:3002`. If you skip the `cp` step the server 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MINIMAX_API_KEY` | — | **Required.** MiniMax API key. |
+| `OPENAI_API_KEY` | — | **Required.** Any OpenAI-compatible API key (MiniMax, OpenAI, Groq, etc.). |
 | `MINIMAX_BASE_URL` | `https://api.minimax.io/v1` | Override the API base URL. |
 | `MINIMAX_MODEL` | `MiniMax-M3` | Used for the final session report. |
 | `MINIMAX_FAST_MODEL` | `MiniMax-M2.5-highspeed` | Used for per-sentence free-write checks. |
